@@ -1,0 +1,13 @@
+{
+  "epochs": 20,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "min_learning_rate": 0.00001,
+  "weight_decay": 0.05,
+  "ema": 0.99,
+  "mask_block_size": 4,
+  "num_workers": 0,
+  "normalize_targets": true,
+  "loss_type": "smooth_l1",
+  "seeds": [42, 43, 44]
+}

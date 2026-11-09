@@ -1,0 +1,79 @@
+Mini I-JEPA：一次启动，依次训练 A → B → C
+
+1. 使用
+解压整个 mini_ijepa_abc 文件夹，进入该文件夹，在原有 torch/torchvision 环境运行：
+
+    python train.py
+
+程序读取 configs/a.json、b.json、c.json 和共用的 configs/train.json，依次完成：
+A（4 层 Encoder / 2 层原 Predictor）→ B（4 / 2 层官方风格）→ C（12 / 6 层）。
+默认每组独立初始化，seed 42，20 epochs。运行一次即可，无须手动启动下一组。
+这里只自动预训练，不会自动启动耗时的线性评估。
+
+有现成 CIFAR-10 data 文件夹时：
+    python train.py --data-dir "原项目的data目录"
+
+只重跑某组：
+    python train.py --experiments B
+
+一次完成三个预训练种子（顺序为 A42→B42→C42→A43→B43→C43→A44→B44→C44）：
+    python train.py --seeds 42 43 44
+
+临时统一调整轮数：
+    python train.py --epochs 40
+
+2. 配置放在哪里
+configs/a.json：A 的原始四层 baseline 架构。
+configs/b.json：B 的内部结构调整，Encoder 四层、Predictor 两层。
+configs/c.json：C 只把 B 加深至 Encoder 十二层、Predictor 六层。
+configs/train.json：三组共用的轮数、batch size、学习率、weight decay、EMA、mask 大小、种子。
+models.py：根据配置构建模型。
+train.py：唯一的训练循环与调度入口，不是轮流调用三个独立训练脚本。
+evaluate.py：读取 checkpoint 中的架构配置，统一评估。
+无需此前的 patchify.py、patchify_b.py 或 patchify_c.py。
+
+3. 保存位置
+每次启动新建一个带时间戳的 runs 目录，避免覆盖之前的结果，例如：
+runs/20261109_120000_123456/
+    summary.json
+    A/seed_42/teacher.pt、training.csv、model_config.json、train_config.json
+    B/seed_42/teacher.pt、training.csv、model_config.json、train_config.json
+    C/seed_42/teacher.pt、training.csv、model_config.json、train_config.json
+
+summary.json 记录成功/失败状态、权重位置、最终损失、用时和可训练参数量。
+如果某组出错会停止队列，已完成的权重保留。可以修正后用 --experiments 运行剩余组。
+目前保存用于评估的 Teacher，不支持中断续训或自动跳过之前完成的组。
+
+4. 一次评估整批结果
+训练结束后，将实际的带时间戳目录填入：
+    python evaluate.py --run-dir "runs/实际目录名称"
+默认对每个权重做三个 Probe 种子和同架构随机模型对照，结果写入 evaluation.json。
+也可以只评估预训练模型：
+    python evaluate.py --run-dir "runs/实际目录名称" --mode pretrained
+单个权重：
+    python evaluate.py --checkpoint "runs/实际目录名称/A/seed_42/teacher.pt"
+如训练指定了数据目录，评估也传入同一个 --data-dir。
+Probe 种子是重复训练分类器，不代表多次预训练。
+评估脚本面向本统一包生成的权重，不读取旧版无 model_config 的 baseline 权重。
+
+5. 对照条件
+保留既定架构和训练方法：CIFAR-10 32×32、patch size 4、ToTensor、单块 mask、
+同 batch 共用 mask、MSE、Teacher 全图前向、EMA 0.99、AdamW、batch 64、20 epochs、
+weight decay 0.05、余弦学习率 1e-3→1e-5、Dropout 0。
+A 的位置编码可学习并进行 EMA；B/C 的位置编码固定不更新。
+B/C 保留已有代码的 PyTorch 默认初始化和 LayerNorm epsilon=1e-5。
+C 对齐的是论文 ViT-B 的深度，宽度仍为 Encoder 128、Predictor 64。
+
+统一后的样本顺序和 mask 分别使用独立随机数生成器。
+同种子下 A/B/C 的样本顺序和遮挡序列相同，模型初始化不再干扰它们。
+这保留了原采样策略，但不会逐位复现旧脚本的随机轨迹；请使用这个入口重新跑三组。
+这里只保证相同训练预算，不保证不同设备的逐位确定性，也不保证深层模型一定更好。
+
+6. 验证记录
+CPU / Python 3.9.6 / torch 2.8.0 / torchvision 0.23.0 下通过合成数据测试：
+三种模型加载相同权重后与原 A/B/C 的前向输出一致；
+单次入口完成 A→B→C，三组样本顺序及 mask 序列一致；
+梯度有限、Teacher 无梯度、EMA 正确（包含 A 的可学习位置编码）；
+权重保存再加载后的输出一致；整批随机/预训练线性评估可运行；
+某组失败时停止队列，正确保留并记录已完成/失败状态。
+尚未进行正式 CIFAR-10 训练或 CUDA 验证，合成数据结果不是实验准确率。

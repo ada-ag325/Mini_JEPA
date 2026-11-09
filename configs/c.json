@@ -1,0 +1,8 @@
+{
+  "experiment": "C", "image_size": 32, "patch_size": 4,
+  "encoder_depth": 12, "encoder_dim": 128, "encoder_heads": 4,
+  "predictor_depth": 6, "predictor_dim": 64, "predictor_heads": 4,
+  "mlp_ratio": 4, "activation": "gelu", "norm_first": true,
+  "final_norm": true, "position_encoding": "fixed_2d_sincos", "predictor_style": "bottleneck",
+  "dropout": 0.0, "layer_norm_eps": 0.00001
+}
